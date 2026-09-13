@@ -1,0 +1,87 @@
+name: aasplit
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-aasplit}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-aasplit_db}
+      POSTGRES_USER: ${DB_USER:-aasplit_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-aasplit_pwd}
+    ports:
+      - "${DB_PORT:-44012}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aasplit_user} -d ${DB_NAME:-aasplit_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-aasplit}-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-46312}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-aasplit}-backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: aasplit
+      ENV: production
+      PORT: "8080"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-aasplit_user}
+      DB_PASSWORD: ${DB_PASSWORD:-aasplit_pwd}
+      DB_NAME: ${DB_NAME:-aasplit_db}
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_string}
+      JWT_EXPIRE_HOURS: ${JWT_EXPIRE_HOURS:-72}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${BACKEND_PORT:-19401}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-aasplit}-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-18401}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db_data:
+    name: ${COMPOSE_PROJECT_NAME:-aasplit}-db-data
+  redis_data:
+    name: ${COMPOSE_PROJECT_NAME:-aasplit}-redis-data

@@ -1,0 +1,18 @@
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.playwright-cli/
+
+# 后端
+backend/server
+backend/*.exe
+backend/coverage.out
+
+# 系统
+.DS_Store
+*.log
+
+# TypeScript build artifacts
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts

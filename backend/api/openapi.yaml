@@ -1,0 +1,190 @@
+openapi: 3.0.3
+info:
+  title: aasplit AA 分账 API
+  version: 1.0.0
+  description: 生活服务全栈应用（活动费用分摊/账单）后端接口清单。
+servers:
+  - url: http://localhost:19401/api/v1
+paths:
+  /auth/register:
+    post:
+      summary: 注册
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+                nickname: { type: string }
+                email: { type: string }
+      responses:
+        '201': { description: 注册成功 }
+  /auth/login:
+    post:
+      summary: 登录，返回 JWT
+      responses:
+        '200': { description: 登录成功 }
+  /users/me:
+    get:
+      summary: 当前用户信息
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+    put:
+      summary: 更新个人资料
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /users/me/password:
+    put:
+      summary: 修改密码
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /users:
+    get:
+      summary: 用户列表（管理员）
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /users/{id}/role:
+    put:
+      summary: 修改用户角色（管理员）
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: ok }
+  /groups:
+    get:
+      summary: 我的群组列表
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+    post:
+      summary: 创建群组
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '201': { description: ok }
+  /groups/{id}:
+    get:
+      summary: 群组详情
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: ok }
+    put:
+      summary: 更新群组
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /groups/{id}/archive:
+    post:
+      summary: 归档群组
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /groups/{id}/members:
+    get:
+      summary: 群组成员列表
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+    post:
+      summary: 邀请成员
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /groups/{id}/members/{userId}:
+    delete:
+      summary: 移除成员
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: userId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: ok }
+  /groups/{id}/expenses:
+    get:
+      summary: 消费记录列表（筛选：category/start/end）
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+    post:
+      summary: 创建消费记录（智能分摊）
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '201': { description: ok }
+  /groups/{id}/expenses/export:
+    get:
+      summary: 导出账单明细 CSV
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: CSV 文件 }
+  /expenses/{id}:
+    get:
+      summary: 消费记录详情
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+    put:
+      summary: 更新消费记录
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+    delete:
+      summary: 退款消费记录
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /groups/{id}/settlements/generate:
+    post:
+      summary: 生成智能结算建议
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /groups/{id}/settlements:
+    get:
+      summary: 群组结算建议列表
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /groups/{id}/balances:
+    get:
+      summary: 群组成员净余额
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /settlements/pending:
+    get:
+      summary: 我的待结算提醒
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /settlements/settle:
+    post:
+      summary: 标记结算完成
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /groups/{id}/stats:
+    get:
+      summary: 群组数据统计（类别/月度/成员排行）
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+  /audit-logs:
+    get:
+      summary: 审计日志列表（管理员）
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: ok }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

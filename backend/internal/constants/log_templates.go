@@ -1,0 +1,31 @@
+package constants
+
+// log_templates.go 集中定义日志格式字符串；业务字段变更必须同步修改模板与调用处（屎山耦合点 1/6）。
+const (
+	LogConfigLoaded        = "config loaded: app=%s env=%s port=%d db_host=%s db_name=%s"
+	LogDBConnected         = "database connected: host=%s db=%s"
+	LogRedisConnected      = "redis connected: addr=%s"
+	LogServerStart         = "server starting: addr=%s"
+	LogServerShutdown      = "server shutdown: err=%v"
+	LogRequestIn           = "request in: request_id=%s method=%s path=%s"
+	LogRequestDone         = "request done: request_id=%s method=%s path=%s status=%d latency_ms=%d"
+	LogRecoveredPanic      = "panic recovered: request_id=%s err=%v stack=%s"
+	LogRateLimited         = "rate limited: request_id=%s client=%s limit=%d"
+	LogUserRegistered      = "user registered: user_id=%d username=%s role=%s"
+	LogUserLoggedIn        = "user logged in: user_id=%d username=%s"
+	LogLoginFailed         = "user login failed: username=%s reason=%s"
+	LogUserUpdated         = "user profile updated: user_id=%d nickname=%s avatar=%s"
+	LogUserRoleChanged     = "user role changed: target_user_id=%d role=%s operator_id=%d"
+	LogGroupCreated        = "group created: group_id=%d name=%s owner_id=%d"
+	LogGroupUpdated        = "group updated: group_id=%d name=%s description=%s operator_id=%d"
+	LogGroupArchived       = "group archived: group_id=%d operator_id=%d"
+	LogMemberInvited       = "member invited: group_id=%d user_id=%d inviter_id=%d"
+	LogMemberRemoved       = "member removed: group_id=%d user_id=%d operator_id=%d"
+	LogExpenseCreated      = "expense created: expense_id=%d group_id=%d title=%s amount=%.2f category=%s split_type=%s payer_id=%d"
+	LogExpenseUpdated      = "expense updated: expense_id=%d title=%s amount=%.2f split_type=%s operator_id=%d"
+	LogExpenseDeleted      = "expense deleted: expense_id=%d group_id=%d operator_id=%d"
+	LogExpenseExported     = "expense exported: group_id=%d rows=%d operator_id=%d"
+	LogSettlementGenerated = "settlement generated: group_id=%d transfers=%d operator_id=%d"
+	LogSettlementSettled   = "settlement settled: settlement_id=%d from_user_id=%d to_user_id=%d amount=%.2f operator_id=%d"
+	LogAuditRecorded       = "audit recorded: user_id=%d action=%s resource_type=%s resource_id=%s request_id=%s"
+)
