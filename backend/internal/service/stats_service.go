@@ -24,7 +24,7 @@ func NewStatsService(statsRepo *repository.StatsRepository, shareRepo *repositor
 
 // GetGroupStats 获取群组统计（类别占比、月度趋势、成员排行）。
 func (s *StatsService) GetGroupStats(userID, groupID uint) (*dto.StatsResp, error) {
-	ok, err := s.memberRepo.Exists(groupID, userID)
+	ok, err := s.memberRepo.Exists(nil, groupID, userID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
@@ -47,11 +47,11 @@ func (s *StatsService) GetGroupStats(userID, groupID uint) (*dto.StatsResp, erro
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
-	paid, err := s.shareRepo.SumPaidByGroup(groupID)
+	paid, err := s.shareRepo.SumPaidByGroup(nil, groupID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
-	owed, err := s.shareRepo.SumOwedByGroup(groupID)
+	owed, err := s.shareRepo.SumOwedByGroup(nil, groupID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}

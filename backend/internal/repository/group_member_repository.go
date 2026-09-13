@@ -41,10 +41,10 @@ func (r *GroupMemberRepository) Find(groupID, userID uint) (*model.GroupMember, 
 	return &m, nil
 }
 
-// Exists 判断成员关系是否存在。
-func (r *GroupMemberRepository) Exists(groupID, userID uint) (bool, error) {
+// Exists 判断成员关系是否存在（传 tx 时复用该事务）。
+func (r *GroupMemberRepository) Exists(tx *gorm.DB, groupID, userID uint) (bool, error) {
 	var n int64
-	if err := r.db.Model(&model.GroupMember{}).Where("group_id = ? AND user_id = ? AND status = ?", groupID, userID, "active").Count(&n).Error; err != nil {
+	if err := txOrDB(tx, r.db).Model(&model.GroupMember{}).Where("group_id = ? AND user_id = ? AND status = ?", groupID, userID, "active").Count(&n).Error; err != nil {
 		return false, fmt.Errorf("check group member exists: %w", err)
 	}
 	return n > 0, nil
@@ -60,10 +60,10 @@ func (r *GroupMemberRepository) ListByGroup(groupID uint) ([]model.GroupMember, 
 	return members, nil
 }
 
-// ListUserIDs 查询群组有效成员 ID 列表。
-func (r *GroupMemberRepository) ListUserIDs(groupID uint) ([]uint, error) {
+// ListUserIDs 查询群组有效成员 ID 列表（传 tx 时复用该事务）。
+func (r *GroupMemberRepository) ListUserIDs(tx *gorm.DB, groupID uint) ([]uint, error) {
 	var ids []uint
-	if err := r.db.Model(&model.GroupMember{}).Where("group_id = ? AND status = ?", groupID, "active").
+	if err := txOrDB(tx, r.db).Model(&model.GroupMember{}).Where("group_id = ? AND status = ?", groupID, "active").
 		Pluck("user_id", &ids).Error; err != nil {
 		return nil, fmt.Errorf("list group member ids: %w", err)
 	}

@@ -35,23 +35,32 @@ func NewExpenseRepository(db *gorm.DB) *ExpenseRepository {
 
 // Create 创建消费记录（事务中调用）。
 func (r *ExpenseRepository) Create(tx *gorm.DB, expense *model.Expense) error {
-	if tx == nil {
-		tx = r.db
-	}
-	if err := tx.Create(expense).Error; err != nil {
+	if err := txOrDB(tx, r.db).Create(expense).Error; err != nil {
 		return fmt.Errorf("create expense: %w", err)
 	}
 	return nil
 }
 
-// FindByID 按 ID 查询（含付款人信息）。
-func (r *ExpenseRepository) FindByID(id uint) (*model.Expense, error) {
+// FindByID 按 ID 查询（含付款人信息；传 tx 时复用该事务）。
+func (r *ExpenseRepository) FindByID(tx *gorm.DB, id uint) (*model.Expense, error) {
 	var e model.Expense
-	if err := r.db.Preload("Payer").Preload("Shares.User").First(&e, id).Error; err != nil {
+	if err := txOrDB(tx, r.db).Preload("Payer").Preload("Shares.User").First(&e, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrExpenseNotFound
 		}
 		return nil, fmt.Errorf("find expense by id: %w", err)
+	}
+	return &e, nil
+}
+
+// LockByID 行级锁查询消费记录（事务中调用，SELECT ... FOR UPDATE）。
+func (r *ExpenseRepository) LockByID(tx *gorm.DB, id uint) (*model.Expense, error) {
+	var e model.Expense
+	if err := txOrDB(tx, r.db).Clauses(lockClause).First(&e, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrExpenseNotFound
+		}
+		return nil, fmt.Errorf("lock expense by id: %w", err)
 	}
 	return &e, nil
 }
@@ -85,10 +94,7 @@ func (r *ExpenseRepository) List(p ExpenseQueryParams) ([]model.Expense, int64, 
 
 // Update 更新消费记录。
 func (r *ExpenseRepository) Update(tx *gorm.DB, expense *model.Expense) error {
-	if tx == nil {
-		tx = r.db
-	}
-	if err := tx.Save(expense).Error; err != nil {
+	if err := txOrDB(tx, r.db).Save(expense).Error; err != nil {
 		return fmt.Errorf("update expense: %w", err)
 	}
 	return nil
@@ -96,10 +102,7 @@ func (r *ExpenseRepository) Update(tx *gorm.DB, expense *model.Expense) error {
 
 // UpdateStatus 更新消费状态。
 func (r *ExpenseRepository) UpdateStatus(tx *gorm.DB, id uint, status string) error {
-	if tx == nil {
-		tx = r.db
-	}
-	if err := tx.Model(&model.Expense{}).Where("id = ?", id).Update("status", status).Error; err != nil {
+	if err := txOrDB(tx, r.db).Model(&model.Expense{}).Where("id = ?", id).Update("status", status).Error; err != nil {
 		return fmt.Errorf("update expense status: %w", err)
 	}
 	return nil
@@ -107,10 +110,7 @@ func (r *ExpenseRepository) UpdateStatus(tx *gorm.DB, id uint, status string) er
 
 // DeleteShares 删除某消费记录的全部分摊明细（事务中调用）。
 func (r *ExpenseRepository) DeleteShares(tx *gorm.DB, expenseID uint) error {
-	if tx == nil {
-		tx = r.db
-	}
-	if err := tx.Where("expense_id = ?", expenseID).Delete(&model.ExpenseShare{}).Error; err != nil {
+	if err := txOrDB(tx, r.db).Where("expense_id = ?", expenseID).Delete(&model.ExpenseShare{}).Error; err != nil {
 		return fmt.Errorf("delete expense shares: %w", err)
 	}
 	return nil
@@ -121,10 +121,7 @@ func (r *ExpenseRepository) CreateShares(tx *gorm.DB, shares []model.ExpenseShar
 	if len(shares) == 0 {
 		return nil
 	}
-	if tx == nil {
-		tx = r.db
-	}
-	if err := tx.Create(&shares).Error; err != nil {
+	if err := txOrDB(tx, r.db).Create(&shares).Error; err != nil {
 		return fmt.Errorf("create expense shares: %w", err)
 	}
 	return nil

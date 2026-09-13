@@ -25,20 +25,21 @@ type ExpenseService struct {
 	memberRepo  *repository.GroupMemberRepository
 	groupRepo   *repository.GroupRepository
 	userRepo    *repository.UserRepository
+	settleRepo  *repository.SettlementRepository
 	auditSvc    *AuditService
 	logger      *slog.Logger
 }
 
 // NewExpenseService 构造消费记录服务。
-func NewExpenseService(db *gorm.DB, expenseRepo *repository.ExpenseRepository, memberRepo *repository.GroupMemberRepository, groupRepo *repository.GroupRepository, userRepo *repository.UserRepository, auditSvc *AuditService, logger *slog.Logger) *ExpenseService {
-	return &ExpenseService{db: db, expenseRepo: expenseRepo, memberRepo: memberRepo, groupRepo: groupRepo, userRepo: userRepo, auditSvc: auditSvc, logger: logger}
+func NewExpenseService(db *gorm.DB, expenseRepo *repository.ExpenseRepository, memberRepo *repository.GroupMemberRepository, groupRepo *repository.GroupRepository, userRepo *repository.UserRepository, settleRepo *repository.SettlementRepository, auditSvc *AuditService, logger *slog.Logger) *ExpenseService {
+	return &ExpenseService{db: db, expenseRepo: expenseRepo, memberRepo: memberRepo, groupRepo: groupRepo, userRepo: userRepo, settleRepo: settleRepo, auditSvc: auditSvc, logger: logger}
 }
 
-// Create 创建消费记录并计算分摊明细（事务 + 群组行锁）。
+// Create 创建消费记录并计算分摊明细（单一事务：群组行锁 → 校验/计算 → 写记录 → 写分摊明细 → 失效旧结算建议）。
 func (s *ExpenseService) Create(userID uint, req *dto.CreateExpenseReq) (*model.Expense, error) {
 	var created *model.Expense
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		group, err := s.groupRepo.LockByID(req.GroupID)
+		group, err := s.groupRepo.LockByID(tx, req.GroupID)
 		if err != nil {
 			return err
 		}
@@ -87,6 +88,10 @@ func (s *ExpenseService) Create(userID uint, req *dto.CreateExpenseReq) (*model.
 		if err := s.expenseRepo.CreateShares(tx, shareModels); err != nil {
 			return err
 		}
+		// 金额构成已变化：同一事务内失效该群组的待结算建议，避免返回过期数据。
+		if err := s.settleRepo.DeletePendingByGroup(tx, req.GroupID); err != nil {
+			return err
+		}
 		created = expense
 		return nil
 	})
@@ -98,14 +103,14 @@ func (s *ExpenseService) Create(userID uint, req *dto.CreateExpenseReq) (*model.
 	return s.Get(userID, created.ID)
 }
 
-// Update 更新消费记录及其分摊明细（事务 + 群组行锁）。
+// Update 更新消费记录及其分摊明细（单一事务：消费记录行锁 → 群组行锁 → 校验/计算 → 更新记录 → 重建分摊明细 → 失效旧结算建议）。
 func (s *ExpenseService) Update(userID, expenseID uint, req *dto.UpdateExpenseReq) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		expense, err := s.expenseRepo.FindByID(expenseID)
+		expense, err := s.expenseRepo.LockByID(tx, expenseID)
 		if err != nil {
 			return util.Wrap(constants.CodeNotFound, "消费记录 expense 不存在", err)
 		}
-		group, err := s.groupRepo.LockByID(expense.GroupID)
+		group, err := s.groupRepo.LockByID(tx, expense.GroupID)
 		if err != nil {
 			return util.Wrap(constants.CodeNotFound, "群组 group 不存在", err)
 		}
@@ -155,6 +160,10 @@ func (s *ExpenseService) Update(userID, expenseID uint, req *dto.UpdateExpenseRe
 		if err := s.expenseRepo.CreateShares(tx, shareModels); err != nil {
 			return err
 		}
+		// 金额构成已变化：同一事务内失效该群组的待结算建议，避免返回过期数据。
+		if err := s.settleRepo.DeletePendingByGroup(tx, expense.GroupID); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -165,12 +174,18 @@ func (s *ExpenseService) Update(userID, expenseID uint, req *dto.UpdateExpenseRe
 	return nil
 }
 
-// Delete 将消费记录标记为已退款（保留历史）。
+// Delete 将消费记录标记为已退款（单一事务：消费记录行锁 → 群组行锁 → 成员/状态校验 → 状态更新并失效旧结算建议；保留历史）。
+// 群组行锁与结算生成互斥：生成建议同样先锁群组行，从而消除“退款删除 pending 后、
+// 仍在进行中的生成事务再插入按退款前余额计算的建议”这一并发窗口。
+// 分摊明细不删除：统计与结算均通过 expenses.status='active' 过滤，退款记录与其明细作为历史保留。
 func (s *ExpenseService) Delete(userID, expenseID uint) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		expense, err := s.expenseRepo.FindByID(expenseID)
+		expense, err := s.expenseRepo.LockByID(tx, expenseID)
 		if err != nil {
 			return util.Wrap(constants.CodeNotFound, "消费记录 expense 不存在", err)
+		}
+		if _, err := s.groupRepo.LockByID(tx, expense.GroupID); err != nil {
+			return util.Wrap(constants.CodeNotFound, "群组 group 不存在", err)
 		}
 		if err := s.ensureMember(tx, expense.GroupID, userID); err != nil {
 			return err
@@ -178,7 +193,14 @@ func (s *ExpenseService) Delete(userID, expenseID uint) error {
 		if expense.Status != constants.ExpenseActive {
 			return util.NewAppError(constants.CodeConflict, "消费记录 expense 已退款，无需重复操作", nil)
 		}
-		return s.expenseRepo.UpdateStatus(tx, expenseID, string(constants.ExpenseRefunded))
+		if err := s.expenseRepo.UpdateStatus(tx, expenseID, string(constants.ExpenseRefunded)); err != nil {
+			return err
+		}
+		// 退款改变余额：同一事务内失效该群组的待结算建议，避免返回过期数据。
+		if err := s.settleRepo.DeletePendingByGroup(tx, expense.GroupID); err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		return err
@@ -190,14 +212,14 @@ func (s *ExpenseService) Delete(userID, expenseID uint) error {
 
 // Get 查询消费记录详情。
 func (s *ExpenseService) Get(userID, expenseID uint) (*model.Expense, error) {
-	expense, err := s.expenseRepo.FindByID(expenseID)
+	expense, err := s.expenseRepo.FindByID(nil, expenseID)
 	if errors.Is(err, repository.ErrExpenseNotFound) {
 		return nil, util.NewAppError(constants.CodeNotFound, "消费记录 expense 不存在", err)
 	}
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
-	ok, err := s.memberRepo.Exists(expense.GroupID, userID)
+	ok, err := s.memberRepo.Exists(nil, expense.GroupID, userID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
@@ -209,7 +231,7 @@ func (s *ExpenseService) Get(userID, expenseID uint) (*model.Expense, error) {
 
 // List 分页筛选查询（复用：详情/列表/导出共用同一查询逻辑）。
 func (s *ExpenseService) List(userID, groupID uint, query *dto.ExpenseQuery) ([]model.Expense, int64, error) {
-	ok, err := s.memberRepo.Exists(groupID, userID)
+	ok, err := s.memberRepo.Exists(nil, groupID, userID)
 	if err != nil {
 		return nil, 0, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
@@ -283,9 +305,9 @@ func (s *ExpenseService) ExportCSV(userID, groupID uint, query *dto.ExpenseQuery
 	return buf.Bytes(), filename, nil
 }
 
-// calcShares 校验参与人并调用 splitcalc 计算分摊。
+// calcShares 校验参与人并调用 splitcalc 计算分摊（传入 tx 时，成员读取复用该事务）。
 func (s *ExpenseService) calcShares(tx *gorm.DB, groupID uint, amount float64, splitType string, inputs []dto.ShareInput) ([]splitcalc.Share, error) {
-	memberIDs, err := s.memberRepo.ListUserIDs(groupID)
+	memberIDs, err := s.memberRepo.ListUserIDs(tx, groupID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}

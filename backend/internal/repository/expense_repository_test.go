@@ -50,7 +50,7 @@ func TestExpenseRepositoryCreateList(t *testing.T) {
 		})
 	}
 
-	got, err := repo.FindByID(expense.ID)
+	got, err := repo.FindByID(nil, expense.ID)
 	if err != nil {
 		t.Fatalf("find by id: %v", err)
 	}

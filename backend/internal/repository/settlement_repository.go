@@ -54,10 +54,10 @@ func (r *SettlementRepository) ListPendingByUser(userID uint) ([]model.Settlemen
 	return items, nil
 }
 
-// FindByID 按 ID 查询。
-func (r *SettlementRepository) FindByID(id uint) (*model.Settlement, error) {
+// FindByID 按 ID 查询（传 tx 时复用该事务）。
+func (r *SettlementRepository) FindByID(tx *gorm.DB, id uint) (*model.Settlement, error) {
 	var s model.Settlement
-	if err := r.db.First(&s, id).Error; err != nil {
+	if err := txOrDB(tx, r.db).First(&s, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSettlementNotFound
 		}
@@ -82,8 +82,17 @@ func (r *SettlementRepository) MarkSettled(tx *gorm.DB, ids []uint) error {
 
 // DeleteAllByGroup 清空群组结算建议（重新生成前调用）。
 func (r *SettlementRepository) DeleteAllByGroup(tx *gorm.DB, groupID uint) error {
-	if err := tx.Where("group_id = ?", groupID).Delete(&model.Settlement{}).Error; err != nil {
+	if err := txOrDB(tx, r.db).Where("group_id = ?", groupID).Delete(&model.Settlement{}).Error; err != nil {
 		return fmt.Errorf("delete settlements by group: %w", err)
+	}
+	return nil
+}
+
+// DeletePendingByGroup 删除群组内待结算建议（消费记录新增/修改/退款后联动失效过期建议；已结算历史保留）。
+func (r *SettlementRepository) DeletePendingByGroup(tx *gorm.DB, groupID uint) error {
+	if err := txOrDB(tx, r.db).Where("group_id = ? AND status = ?", groupID, "pending").
+		Delete(&model.Settlement{}).Error; err != nil {
+		return fmt.Errorf("delete pending settlements by group: %w", err)
 	}
 	return nil
 }

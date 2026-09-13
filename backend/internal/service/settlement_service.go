@@ -35,25 +35,25 @@ func NewSettlementService(db *gorm.DB, settleRepo *repository.SettlementReposito
 func (s *SettlementService) Generate(userID, groupID uint) ([]model.Settlement, error) {
 	var result []model.Settlement
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		group, err := s.groupRepo.LockByID(groupID)
+		group, err := s.groupRepo.LockByID(tx, groupID)
 		if err != nil {
 			return util.Wrap(constants.CodeNotFound, "群组 group 不存在", err)
 		}
 		if !group.IsActive() {
 			return util.NewAppError(constants.CodeConflict, "群组 group 已归档，无法生成结算建议 settlement", nil)
 		}
-		memberIDs, err := s.memberRepo.ListUserIDs(groupID)
+		memberIDs, err := s.memberRepo.ListUserIDs(tx, groupID)
 		if err != nil {
 			return util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 		}
 		if len(memberIDs) < 2 {
 			return util.NewAppError(constants.CodeBadRequest, "群组成员 member 不足 2 人，无法生成结算建议 settlement", nil)
 		}
-		paid, err := s.shareRepo.SumPaidByGroup(groupID)
+		paid, err := s.shareRepo.SumPaidByGroup(tx, groupID)
 		if err != nil {
 			return util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 		}
-		owed, err := s.shareRepo.SumOwedByGroup(groupID)
+		owed, err := s.shareRepo.SumOwedByGroup(tx, groupID)
 		if err != nil {
 			return util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 		}
@@ -99,7 +99,7 @@ func (s *SettlementService) Generate(userID, groupID uint) ([]model.Settlement, 
 
 // ListByGroup 查询群组结算建议。
 func (s *SettlementService) ListByGroup(userID, groupID uint) ([]model.Settlement, error) {
-	ok, err := s.memberRepo.Exists(groupID, userID)
+	ok, err := s.memberRepo.Exists(nil, groupID, userID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
@@ -128,11 +128,11 @@ func (s *SettlementService) Settle(userID uint, req *dto.SettleReq) (int64, erro
 	var first *model.Settlement
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, id := range req.SettlementIDs {
-			item, err := s.settleRepo.FindByID(id)
+			item, err := s.settleRepo.FindByID(tx, id)
 			if err != nil {
 				return util.Wrap(constants.CodeNotFound, "结算建议 settlement 不存在", err)
 			}
-			ok, err := s.memberRepo.Exists(item.GroupID, userID)
+			ok, err := s.memberRepo.Exists(tx, item.GroupID, userID)
 			if err != nil {
 				return util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 			}
@@ -168,7 +168,7 @@ func (s *SettlementService) Settle(userID uint, req *dto.SettleReq) (int64, erro
 
 // Balances 计算群组成员净余额（统计页/结算页共用）。
 func (s *SettlementService) Balances(userID, groupID uint) ([]dto.GroupBalance, error) {
-	ok, err := s.memberRepo.Exists(groupID, userID)
+	ok, err := s.memberRepo.Exists(nil, groupID, userID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
@@ -179,11 +179,11 @@ func (s *SettlementService) Balances(userID, groupID uint) ([]dto.GroupBalance, 
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
-	paid, err := s.shareRepo.SumPaidByGroup(groupID)
+	paid, err := s.shareRepo.SumPaidByGroup(nil, groupID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
-	owed, err := s.shareRepo.SumOwedByGroup(groupID)
+	owed, err := s.shareRepo.SumOwedByGroup(nil, groupID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}

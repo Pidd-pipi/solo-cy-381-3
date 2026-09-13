@@ -14,7 +14,12 @@ import (
 // newExpenseServiceFixture 构造带群组与成员的服务夹具。
 func newExpenseServiceFixture(t *testing.T) (*gorm.DB, *ExpenseService, *GroupService, uint, uint, uint, uint) {
 	t.Helper()
-	db := newTestDB(t)
+	return newExpenseServiceFixtureDB(t, newTestDB(t))
+}
+
+// newExpenseServiceFixtureDB 在给定数据库上构造带群组与成员的服务夹具（并发测试可注入文件库）。
+func newExpenseServiceFixtureDB(t *testing.T, db *gorm.DB) (*gorm.DB, *ExpenseService, *GroupService, uint, uint, uint, uint) {
+	t.Helper()
 	userRepo := repository.NewUserRepository(db)
 	groupRepo := repository.NewGroupRepository(db)
 	memberRepo := repository.NewGroupMemberRepository(db)
@@ -47,7 +52,7 @@ func newExpenseServiceFixture(t *testing.T) (*gorm.DB, *ExpenseService, *GroupSe
 	if err := groupSvc.InviteMember(u1.ID, group.ID, "carol"); err != nil {
 		t.Fatalf("invite carol: %v", err)
 	}
-	expenseSvc := NewExpenseService(db, repository.NewExpenseRepository(db), memberRepo, groupRepo, userRepo, auditSvc, logger)
+	expenseSvc := NewExpenseService(db, repository.NewExpenseRepository(db), memberRepo, groupRepo, userRepo, repository.NewSettlementRepository(db), auditSvc, logger)
 	return db, expenseSvc, groupSvc, group.ID, u1.ID, u2.ID, u3.ID
 }
 

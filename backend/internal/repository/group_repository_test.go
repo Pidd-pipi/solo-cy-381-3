@@ -45,7 +45,7 @@ func TestGroupRepositoryLockByID(t *testing.T) {
 	if err := repo.Create(g); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	locked, err := repo.LockByID(g.ID)
+	locked, err := repo.LockByID(nil, g.ID)
 	if err != nil {
 		t.Fatalf("lock: %v", err)
 	}

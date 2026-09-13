@@ -107,7 +107,7 @@ func (s *GroupService) Get(userID, groupID uint) (*model.Group, int64, error) {
 	if err != nil {
 		return nil, 0, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
-	ok, err := s.memberRepo.Exists(groupID, userID)
+	ok, err := s.memberRepo.Exists(nil, groupID, userID)
 	if err != nil {
 		return nil, 0, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
@@ -149,7 +149,7 @@ func (s *GroupService) InviteMember(operatorID, groupID uint, username string) e
 	if err != nil {
 		return util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
-	exists, err := s.memberRepo.Exists(groupID, invitee.ID)
+	exists, err := s.memberRepo.Exists(nil, groupID, invitee.ID)
 	if err != nil {
 		return util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
@@ -172,7 +172,7 @@ func (s *GroupService) InviteMember(operatorID, groupID uint, username string) e
 
 // ListMembers 查询群组成员列表。
 func (s *GroupService) ListMembers(userID, groupID uint) ([]model.GroupMember, error) {
-	ok, err := s.memberRepo.Exists(groupID, userID)
+	ok, err := s.memberRepo.Exists(nil, groupID, userID)
 	if err != nil {
 		return nil, util.Wrap(constants.CodeInternalError, constants.MsgErrInternal, err)
 	}
